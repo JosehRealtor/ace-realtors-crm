@@ -10,6 +10,7 @@ import Properties from './pages/Properties'
 import Clients from './pages/Clients'
 import Team from './pages/Team'
 import Reports from './pages/Reports'
+import Archive from './pages/Archive'
 
 class ErrorBoundary extends Component {
   constructor(props) { super(props); this.state = { hasError: false, error: null } }
@@ -30,7 +31,6 @@ class ErrorBoundary extends Component {
 
 function AppContent() {
   const { user, profile, loading } = useAuth()
-
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <div className="text-center">
@@ -39,9 +39,7 @@ function AppContent() {
       </div>
     </div>
   )
-
   if (!user) return <Login />
-
   return (
     <div className="flex min-h-screen bg-gray-50">
       <Sidebar />
@@ -54,6 +52,7 @@ function AppContent() {
           <Route path="/clients" element={profile?.role === 'Director' || profile?.role === 'Secretary' ? <Clients /> : <Navigate to="/" />} />
           <Route path="/team" element={<Team />} />
           <Route path="/reports" element={profile?.role === 'Director' ? <Reports /> : <Navigate to="/" />} />
+          <Route path="/archive" element={profile?.role === 'Director' || profile?.role === 'Secretary' ? <Archive /> : <Navigate to="/" />} />
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </main>
