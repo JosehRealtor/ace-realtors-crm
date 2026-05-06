@@ -43,7 +43,8 @@ function AppContent() {
   return (
     <div className="flex min-h-screen bg-gray-50">
       <Sidebar />
-      <main className="flex-1 ml-60 p-6 min-h-screen">
+      {/* Desktop: offset for fixed sidebar. Mobile: offset for top bar */}
+      <main className="flex-1 md:ml-60 pt-16 md:pt-0 p-4 md:p-6 min-h-screen">
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/enquiries" element={<Enquiries />} />
