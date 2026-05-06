@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { Plus, X, LayoutGrid, List } from 'lucide-react'
+import { useAuth } from '../lib/AuthContext'
+import { Plus, X, LayoutGrid, List, Pencil } from 'lucide-react'
 
 const MARKETERS = ['Joseph','Kenneth','Mercy','Lucy','Unassigned']
 const TYPES = ['House','Apartment','Plot','Commercial']
@@ -9,17 +10,17 @@ const DEAL_TYPES = ['For Sale','For Rent']
 const OWNER_TYPES = ['Landlord','Developer']
 const PLATFORMS = ['BuyRent Kenya','Property24','Website']
 const fmt = n => 'KES ' + Number(n).toLocaleString()
-
 const statusBadge = s => ({ Available:'bg-green-100 text-green-700', 'Under Offer':'bg-yellow-100 text-yellow-700', Taken:'bg-red-100 text-red-700' }[s])
 const typeBg = t => ({ House:'🏡', Apartment:'🏢', Plot:'🏗️', Commercial:'🏬' }[t] || '🏠')
-
 const empty = { property_name:'', type:'House', location:'', price:'', deal_type:'For Sale', bedrooms:'', status:'Available', platforms:[], owner_name:'', owner_type:'Landlord', assigned_marketer:'Unassigned' }
 
 export default function Properties() {
+  const { profile } = useAuth()
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [view, setView] = useState('grid')
   const [modal, setModal] = useState(false)
+  const [editing, setEditing] = useState(null)
   const [form, setForm] = useState(empty)
   const [saving, setSaving] = useState(false)
 
@@ -34,12 +35,38 @@ export default function Properties() {
 
   const togglePlatform = p => setForm(f => ({ ...f, platforms: f.platforms.includes(p) ? f.platforms.filter(x=>x!==p) : [...f.platforms, p] }))
 
+  const openNew = () => { setEditing(null); setForm(empty); setModal(true) }
+
+  const openEdit = p => {
+    setEditing(p.id)
+    setForm({
+      property_name: p.property_name,
+      type: p.type,
+      location: p.location,
+      price: p.price,
+      deal_type: p.deal_type,
+      bedrooms: p.bedrooms || '',
+      status: p.status,
+      platforms: p.platforms || [],
+      owner_name: p.owner_name || '',
+      owner_type: p.owner_type || 'Landlord',
+      assigned_marketer: p.assigned_marketer || 'Unassigned'
+    })
+    setModal(true)
+  }
+
   const save = async () => {
     if (!form.property_name || !form.location || !form.price) return alert('Fill all required fields')
     setSaving(true)
-    const { error } = await supabase.from('properties').insert([{ ...form, price: Number(form.price), bedrooms: form.bedrooms ? Number(form.bedrooms) : null }])
-    if (error) alert(error.message)
-    else { setModal(false); setForm(empty); load() }
+    const payload = { ...form, price: Number(form.price), bedrooms: form.bedrooms ? Number(form.bedrooms) : null }
+    if (editing) {
+      const { error } = await supabase.from('properties').update(payload).eq('id', editing)
+      if (error) alert(error.message)
+    } else {
+      const { error } = await supabase.from('properties').insert([payload])
+      if (error) alert(error.message)
+    }
+    setModal(false); setForm(empty); setEditing(null); load()
     setSaving(false)
   }
 
@@ -48,6 +75,8 @@ export default function Properties() {
     await supabase.from('properties').delete().eq('id', id)
     setRows(r => r.filter(x => x.id !== id))
   }
+
+  const canEdit = profile?.role === 'Director' || profile?.role === 'Marketer'
 
   if (loading) return <div className="flex items-center justify-center h-64 text-gray-400">Loading...</div>
 
@@ -58,19 +87,23 @@ export default function Properties() {
         <div className="flex items-center gap-2">
           <button onClick={() => setView('grid')} className={`p-2 rounded-lg ${view==='grid'?'bg-primary-100 text-primary-600':'text-gray-400 hover:bg-gray-100'}`}><LayoutGrid size={16}/></button>
           <button onClick={() => setView('list')} className={`p-2 rounded-lg ${view==='list'?'bg-primary-100 text-primary-600':'text-gray-400 hover:bg-gray-100'}`}><List size={16}/></button>
-          <button onClick={() => setModal(true)} className="btn-primary"><Plus size={16}/> New Listing</button>
+          <button onClick={openNew} className="btn-primary"><Plus size={16}/> New Listing</button>
         </div>
       </div>
 
       {view === 'grid' ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {rows.length === 0 && <p className="text-gray-400 text-sm">No properties yet.</p>}
           {rows.map(p => (
             <div key={p.id} className="card overflow-hidden hover:shadow-md transition-shadow">
               <div className="h-20 bg-gradient-to-br from-primary-50 to-primary-100 flex items-center justify-center text-4xl">{typeBg(p.type)}</div>
               <div className="p-4">
                 <div className="flex items-start justify-between mb-1">
                   <p className="font-semibold text-gray-900 text-sm">{p.property_name}</p>
-                  <button onClick={() => del(p.id)} className="text-gray-200 hover:text-red-400"><X size={14}/></button>
+                  <div className="flex gap-1">
+                    {canEdit && <button onClick={() => openEdit(p)} className="text-gray-300 hover:text-primary-500"><Pencil size={13}/></button>}
+                    {canEdit && <button onClick={() => del(p.id)} className="text-gray-300 hover:text-red-400"><X size={14}/></button>}
+                  </div>
                 </div>
                 <p className="text-xs text-gray-400 mb-2">{p.location}</p>
                 <p className="text-base font-bold text-primary-700 mb-2">{fmt(p.price)}{p.deal_type==='For Rent'?'/mo':''}</p>
@@ -91,6 +124,7 @@ export default function Properties() {
           <table className="w-full text-sm">
             <thead><tr className="border-b border-gray-100 text-left">{['Property','Type','Location','Price','Status','Owner','Marketer',''].map(h=><th key={h} className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase">{h}</th>)}</tr></thead>
             <tbody>
+              {rows.length === 0 && <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">No properties yet.</td></tr>}
               {rows.map(p => (
                 <tr key={p.id} className="border-b border-gray-50 hover:bg-gray-50">
                   <td className="px-4 py-3 font-medium text-gray-900">{p.property_name}</td>
@@ -100,7 +134,12 @@ export default function Properties() {
                   <td className="px-4 py-3"><span className={`text-xs font-medium px-2 py-0.5 rounded-full ${statusBadge(p.status)}`}>{p.status}</span></td>
                   <td className="px-4 py-3 text-gray-500">{p.owner_name}</td>
                   <td className="px-4 py-3 text-gray-500">{p.assigned_marketer}</td>
-                  <td className="px-4 py-3"><button onClick={() => del(p.id)} className="text-gray-300 hover:text-red-500"><X size={14}/></button></td>
+                  <td className="px-4 py-3">
+                    <div className="flex gap-2">
+                      {canEdit && <button onClick={() => openEdit(p)} className="text-gray-300 hover:text-primary-500"><Pencil size={13}/></button>}
+                      {canEdit && <button onClick={() => del(p.id)} className="text-gray-300 hover:text-red-500"><X size={14}/></button>}
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -112,8 +151,8 @@ export default function Properties() {
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between p-5 border-b">
-              <h2 className="font-semibold text-gray-900">New Listing</h2>
-              <button onClick={() => setModal(false)} className="text-gray-400 hover:text-gray-600"><X size={18}/></button>
+              <h2 className="font-semibold text-gray-900">{editing ? 'Edit Listing' : 'New Listing'}</h2>
+              <button onClick={()=>setModal(false)} className="text-gray-400 hover:text-gray-600"><X size={18}/></button>
             </div>
             <div className="p-5 space-y-4">
               <div><label className="label">Property Name *</label><input className="input" value={form.property_name} onChange={e=>setForm({...form,property_name:e.target.value})}/></div>
@@ -141,7 +180,7 @@ export default function Properties() {
             </div>
             <div className="flex justify-end gap-3 px-5 py-4 border-t bg-gray-50 rounded-b-2xl">
               <button onClick={()=>setModal(false)} className="btn-secondary">Cancel</button>
-              <button onClick={save} disabled={saving} className="btn-primary">{saving?'Saving...':'Save Listing'}</button>
+              <button onClick={save} disabled={saving} className="btn-primary">{saving?'Saving...': editing ? 'Update Listing' : 'Save Listing'}</button>
             </div>
           </div>
         </div>
